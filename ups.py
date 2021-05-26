@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: MIT
 
 import math
+import argparse
+import subprocess
 
 from pysvg.filter import *
 from pysvg.gradient import *
@@ -15,26 +17,27 @@ from pysvg.text import *
 from pysvg.builders import *
 from pysvg.parser import parse
 
-PAGE_HEIGHT = 210.
-PAGE_WIDTH = 297.
-
-STROKEWIDTH = 0.15
-MAJOR_TICK_STROKE_LENGTH = 2
-MINOR_TICK_STROKE_LENGTH = 1
-
-LAT_SCALE = 1.2 # in minutes per mm
-
-
+pt = 25.4/72.
 oh = ShapeBuilder()
-svg = Svg(width = "%dmm" % PAGE_WIDTH, height= "%dmm" % PAGE_HEIGHT)
-svg.set_viewBox("0 0 %d %d" % (PAGE_WIDTH, PAGE_HEIGHT))
 
-d = Defs()
+params = {
+    'PAGE_HEIGHT' : 210.,
+    'PAGE_WIDTH' : 297.,
+
+    'STROKEWIDTH' : 0.15,
+    'MAJOR_TICK_STROKE_LENGTH' : 2,
+    'MINOR_TICK_STROKE_LENGTH' : 1,
+
+    'LAT_SCALE' : 1.4, # in mm per minutes
+    'FONT_SIZE' : 6 # in pt
+
+}
+
 
 
 text_style_middle_anchor = StyleBuilder()
 text_style_middle_anchor.setFontFamily(fontfamily="Arial")
-text_style_middle_anchor.setFontSize('2')
+text_style_middle_anchor.setFontSize(6*pt)
 text_style_middle_anchor.style_dict["alignment-baseline"] = "middle"
 text_style_middle_anchor.style_dict["dominant-baseline"]="middle"
 text_style_middle_anchor.setTextAnchor("middle")
@@ -42,7 +45,7 @@ text_style_middle_anchor.setFilling("black")
 
 text_style_start_anchor = StyleBuilder()
 text_style_start_anchor.setFontFamily(fontfamily="Arial")
-text_style_start_anchor.setFontSize('2')
+text_style_start_anchor.setFontSize(6*pt)
 text_style_start_anchor.style_dict["alignment-baseline"] = "middle"
 text_style_start_anchor.style_dict["dominant-baseline"]="middle"
 text_style_start_anchor.setTextAnchor("start")
@@ -50,7 +53,7 @@ text_style_start_anchor.setFilling("black")
 
 
 
-def draw_polar_ticks(svg, radius, spacing_degree = 10, strokelength=2, strokewidth=STROKEWIDTH):
+def draw_polar_ticks(svg, radius, spacing_degree = 10, strokelength=2, strokewidth=0.15):
 
     for theta in range(0, 360, spacing_degree):
         line = oh.createLine(0, radius, 0, radius-strokelength, strokewidth=strokewidth, stroke='black')
@@ -106,8 +109,12 @@ def draw_polar_degree_labels(svg, radius, spacing_degree = 10, intake=3):
         svg.addElement(text)
 
 
-def draw_lon(svg, major_tick_length, minor_tick_length):
-    svg.addElement(oh.createLine(0, PAGE_HEIGHT/2, 0, -PAGE_HEIGHT/2, strokewidth=STROKEWIDTH, stroke='black'))
+def draw_meridian(svg, major_tick_length, minor_tick_length):
+    PAGE_HEIGHT = params['PAGE_HEIGHT']
+    LAT_SCALE = params['LAT_SCALE']
+    STROKEWIDTH = params['STROKEWIDTH']
+
+    svg.addElement(oh.createLine(0, PAGE_HEIGHT, 0, -PAGE_HEIGHT, strokewidth=STROKEWIDTH, stroke='black'))
 
     for tick in range(-int(PAGE_HEIGHT/2), int(PAGE_HEIGHT/2)):
         if tick % 5 == 0:
@@ -120,13 +127,21 @@ def draw_lon(svg, major_tick_length, minor_tick_length):
             t.set_style(text_style_start_anchor.getStyle())
             svg.addElement(t)
 
-def draw_lat(svg):
+def draw_parallels(svg):
+    PAGE_WIDTH = params['PAGE_WIDTH']
+    LAT_SCALE = params['LAT_SCALE']
+    STROKEWIDTH = params['STROKEWIDTH']
+
     svg.addElement(oh.createLine(-int(PAGE_WIDTH), 0, int(PAGE_WIDTH), 0, strokewidth=STROKEWIDTH, stroke='black'))
-    svg.addElement(oh.createLine(-int(PAGE_WIDTH), LAT_SCALE*60, int(PAGE_WIDTH), LAT_SCALE*60, strokewidth=STROKEWIDTH, stroke='black'))
-    svg.addElement(oh.createLine(-int(PAGE_WIDTH), -LAT_SCALE*60, int(PAGE_WIDTH), -LAT_SCALE*60, strokewidth=STROKEWIDTH, stroke='black'))
+    for i in [1,2]:
+        svg.addElement(oh.createLine(-int(PAGE_WIDTH), i*LAT_SCALE*60, int(PAGE_WIDTH), i*LAT_SCALE*60, strokewidth=STROKEWIDTH, stroke='black'))
+        svg.addElement(oh.createLine(-int(PAGE_WIDTH), i*-LAT_SCALE*60, int(PAGE_WIDTH), i*-LAT_SCALE*60, strokewidth=STROKEWIDTH, stroke='black'))
 
 
 def draw_conversion_chart(svg, yscaling=0.8):
+    LAT_SCALE = params['LAT_SCALE']
+    STROKEWIDTH = params['STROKEWIDTH']
+
     g = G()
     svg.addElement(g)
 
@@ -147,15 +162,23 @@ def draw_conversion_chart(svg, yscaling=0.8):
                 t.set_style(text_style_start_anchor.getStyle())
                 g.addElement(t)
 
-            if lat % 1 == 0 and lon == min(lons):
+            if lat % 5 == 0 and (lon == min(lons) or lon == max(lons)):
+                g.addElement(oh.createLine(x+2, y, x, y, strokewidth=STROKEWIDTH, stroke='black'))
+            elif lat % 1 == 0 and (lon == min(lons) or lon == max(lons)):
                 g.addElement(oh.createLine(x+1, y, x, y, strokewidth=STROKEWIDTH, stroke='black'))
 
             points.append((x,y))
+
         pg=oh.createPolyline(points=oh.convertTupleArrayToPoints(points),strokewidth=0.1, stroke='black')
         g.addElement(pg)
     return g
 
 def draw_compass(svg):
+    MAJOR_TICK_STROKE_LENGTH = params['MAJOR_TICK_STROKE_LENGTH']
+    MINOR_TICK_STROKE_LENGTH = params['MINOR_TICK_STROKE_LENGTH']
+    LAT_SCALE = params['LAT_SCALE']
+    STROKEWIDTH = params['STROKEWIDTH']
+
     compass = G()
     svg.addElement(compass)
 
@@ -166,21 +189,67 @@ def draw_compass(svg):
     draw_polar_ticks(compass, radius, spacing_degree=5, strokelength=MAJOR_TICK_STROKE_LENGTH)
     draw_polar_ticks(compass, radius, spacing_degree=1, strokelength=MINOR_TICK_STROKE_LENGTH)
     draw_polar_degree_labels(compass, radius, spacing_degree=10, intake = MAJOR_TICK_STROKE_LENGTH+2)
-    draw_lon(compass, MAJOR_TICK_STROKE_LENGTH, MINOR_TICK_STROKE_LENGTH)
-    draw_lat(compass)
+    draw_meridian(compass, MAJOR_TICK_STROKE_LENGTH, MINOR_TICK_STROKE_LENGTH)
+    draw_parallels(compass)
     return compass
 
-compass = draw_compass(svg)
+def ups(filename = "ups.svg", portrait = False):
+    PAGE_HEIGHT = params['PAGE_HEIGHT']
+    PAGE_WIDTH = params['PAGE_WIDTH']
+    LAT_SCALE = params['LAT_SCALE']
 
-t = TransformBuilder()
-t.setTranslation("%d %d" % (PAGE_WIDTH*0.4, PAGE_HEIGHT/2))
-compass.set_transform(t.getTransform())
+    svg = Svg(width = "%fmm" % params['PAGE_WIDTH'], height= "%fmm" % params['PAGE_HEIGHT'])
+    svg.set_viewBox("0 0 %f %f" % (params['PAGE_WIDTH'],  params['PAGE_HEIGHT']))
+
+    t_compass = TransformBuilder()
+    t_conv = TransformBuilder()
+
+    yscaling=0.8
+
+    if portrait:
+        t_compass.setTranslation("%d %d" % (PAGE_WIDTH*0.5, PAGE_HEIGHT*2/5))
+        t_conv.setTranslation("%d %d" % (PAGE_WIDTH-10, PAGE_HEIGHT*2/5 + 2* LAT_SCALE * 60))
+
+    else:
+        t_compass.setTranslation("%d %d" % (PAGE_WIDTH*0.4, PAGE_HEIGHT/2))
+        t_conv.setTranslation("%d %d" % (PAGE_WIDTH-10, PAGE_HEIGHT/2 + LAT_SCALE * 60))
+
+    compass = draw_compass(svg)
+    compass.set_transform(t_compass.getTransform())
+
+    c = draw_conversion_chart(svg, yscaling=yscaling)
+    c.set_transform(t_conv.getTransform())
+
+    svg.save(filename, encoding='utf-8')
+    inkscape_pdf(filename)
+
+def inkscape_pdf(svg_filename):
+    return_code = subprocess.run(['C:\\Program Files\\Inkscape\\bin\\inkscape.exe', '--export-type=pdf', svg_filename])
+    #print(return_code)
 
 
-c = draw_conversion_chart(svg, yscaling=0.8)
-t = TransformBuilder()
-t.setTranslation("%d %d" % (PAGE_WIDTH-10, PAGE_HEIGHT/2 + LAT_SCALE * 60))
-#t.setScaling(1, 0.7)
-c.set_transform(t.getTransform())
+if __name__ == '__main__':
 
-svg.save('upc.svg', encoding='utf-8')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-pg", "--page", type=str, choices=["a4", "letter"],
+                    help="Set page format", default='a4')
+    parser.add_argument("-p", "--portrait", action="store_true",
+                    help="Set format to portrait instead of landscape")
+    parser.add_argument("-s", "--scale", type=float,
+                    help="Set latitude scaling in mm per minutes", default=1.4)
+    args = parser.parse_args()
+
+    if args.page == 'A4':
+        params['PAGE_HEIGHT'] = 210.
+        params['PAGE_WIDTH'] = 297.
+    elif args.page == 'letter':
+        params['PAGE_HEIGHT'] =  8.5*2.54*10
+        params['PAGE_WIDTH'] =  11*2.54*10
+
+    if args.portrait:
+        t = params['PAGE_WIDTH']
+        params['PAGE_WIDTH'] = params['PAGE_HEIGHT']
+        params['PAGE_HEIGHT'] = t
+
+
+    ups(portrait=args.portrait)
