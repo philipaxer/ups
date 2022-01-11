@@ -5,6 +5,7 @@
 import math
 import argparse
 import subprocess
+import shutil
 
 from pysvg.filter import *
 from pysvg.gradient import *
@@ -95,7 +96,6 @@ def draw_polar_degree_labels(svg, radius, spacing_degree = 10, intake=3):
 
         text = Text("%d" % (theta), (radius+intake-2), 0)
         text.set_style(text_style_middle_anchor.getStyle())
-
         t = TransformBuilder()
         t.setRotation("%d" % (theta))
         text.set_transform(t.getTransform())
@@ -107,6 +107,21 @@ def draw_polar_degree_labels(svg, radius, spacing_degree = 10, intake=3):
         t.setRotation("%d" % (-theta))
         text.set_transform(t.getTransform())
         svg.addElement(text)
+
+        text = Text("%d" % (theta), -(radius+intake-2), 0)
+        text.set_style(text_style_middle_anchor.getStyle())
+        t = TransformBuilder()
+        t.setRotation("%d" % (theta))
+        text.set_transform(t.getTransform())
+        svg.addElement(text)
+
+        text = Text("%d" % (theta), -(radius+intake-2), 0)
+        text.set_style(text_style_middle_anchor.getStyle())
+        t = TransformBuilder()
+        t.setRotation("%d" % (-theta))
+        text.set_transform(t.getTransform())
+        svg.addElement(text)
+
 
 
 def draw_meridian(svg, major_tick_length, minor_tick_length):
@@ -146,7 +161,18 @@ def draw_conversion_chart(svg, yscaling=0.8):
     svg.addElement(g)
 
     lons = [0,2,4,6,8] + list(range(10, 70, 10))
-    for lon in lons:
+    lon_labels = [10,8,6,4,2] + list(range(0, 60, 10)) # this is slightly reordered
+
+    for idx, lon in enumerate(lons):
+
+        text = Text("%d" % (lon_labels[idx]), -LAT_SCALE * lon, 2)
+        text.set_style(text_style_middle_anchor.getStyle())
+        #t = TransformBuilder()
+        #t.setRotation("%d" % (theta))
+        #text.set_transform(t.getTransform())
+        g.addElement(text)
+
+
         points = []
         for lat in range(0, 71, 1):
             f = lat/360. * 2 * math.pi
@@ -193,7 +219,7 @@ def draw_compass(svg):
     draw_parallels(compass)
     return compass
 
-def ups(filename = "ups.svg", portrait = False):
+def ups(filename, portrait = False):
     PAGE_HEIGHT = params['PAGE_HEIGHT']
     PAGE_WIDTH = params['PAGE_WIDTH']
     LAT_SCALE = params['LAT_SCALE']
@@ -204,13 +230,15 @@ def ups(filename = "ups.svg", portrait = False):
     t_compass = TransformBuilder()
     t_conv = TransformBuilder()
 
-    yscaling=0.8
+
 
     if portrait:
+        yscaling=0.7
         t_compass.setTranslation("%d %d" % (PAGE_WIDTH*0.5, PAGE_HEIGHT*2/5))
-        t_conv.setTranslation("%d %d" % (PAGE_WIDTH-10, PAGE_HEIGHT*2/5 + 2* LAT_SCALE * 60))
+        t_conv.setTranslation("%d %d" % (PAGE_WIDTH-10, PAGE_HEIGHT*2/5 + 1.9* LAT_SCALE * 60))
 
     else:
+        yscaling=0.8
         t_compass.setTranslation("%d %d" % (PAGE_WIDTH*0.4, PAGE_HEIGHT/2))
         t_conv.setTranslation("%d %d" % (PAGE_WIDTH-10, PAGE_HEIGHT/2 + LAT_SCALE * 60))
 
@@ -224,19 +252,28 @@ def ups(filename = "ups.svg", portrait = False):
     inkscape_pdf(filename)
 
 def inkscape_pdf(svg_filename):
-    return_code = subprocess.run(['C:\\Program Files\\Inkscape\\bin\\inkscape.exe', '--export-type=pdf', svg_filename])
+    # check if inkscape is in path
+    inkscape_bin = shutil.which("inkscape.exe")
+    if inkscape_bin is None:
+        inkscape_bin = 'C:\\Program Files\\Inkscape\\bin\\inkscape.exe'
+        if shutil.which(inkscape_bin) is None:
+            print("inkscape not found; pdf cannot be generated!")
+            return
+
+    return_code = subprocess.run([inkscape_bin, '--export-type=pdf', svg_filename])
     #print(return_code)
 
-
-if __name__ == '__main__':
-
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-pg", "--page", type=str, choices=["a4", "letter"],
                     help="Set page format", default='a4')
     parser.add_argument("-p", "--portrait", action="store_true",
                     help="Set format to portrait instead of landscape")
     parser.add_argument("-s", "--scale", type=float,
-                    help="Set latitude scaling in mm per minutes", default=1.4)
+                    help="Set latitude scaling in mm per minutes", default=1.3)
+    parser.add_argument("-f", "--file", type=str,
+                    help="Filename", default='ups.svg')
+
     args = parser.parse_args()
 
     if args.page == 'A4':
@@ -251,5 +288,12 @@ if __name__ == '__main__':
         params['PAGE_WIDTH'] = params['PAGE_HEIGHT']
         params['PAGE_HEIGHT'] = t
 
+    params['LAT_SCALE'] = args.scale
 
-    ups(portrait=args.portrait)
+
+    ups(filename = args.file, portrait=args.portrait)
+
+
+if __name__ == '__main__':
+    main()
+

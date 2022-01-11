@@ -1,3 +1,8 @@
 *.pyc
 .vscode
 *.pdf
+*.svg
+.venv
+*.egg-info
+build
+dist
